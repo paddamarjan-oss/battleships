@@ -9,11 +9,9 @@ import asyncio
 import json
 import random
 import string
-import http.server
-import threading
 import os
-import websockets
-from websockets.server import serve
+import aiohttp
+from aiohttp import web
 
 # ─── Game Constants ────────────────────────────────────────────────────────────
 GRID_SIZE = 10
@@ -38,17 +36,20 @@ class Room:
         self.ready  = [False, False]  # placement confirmed
         self.turn   = 0               # whose turn it is (0 or 1)
         self.over   = False
+        # ship cells per player: {ship_name: [{r, c}, ...]}
+        self.ship_cells = [{}, {}]
+        # ship orientations per player: {ship_name: 'H' or 'V'}
+        self.ship_orientations = [{}, {}]
 
     def opponent(self, idx):
         return 1 - idx
 
     def all_ships_sunk(self, board, shots):
         """Return True if every ship cell on board has been shot."""
-        for row in board:
-            for cell in row:
+        for r, row in enumerate(board):
+            for c, cell in enumerate(row):
                 if cell is not None:
-                    coord = f"{board.index(row)},{row.index(cell)}"
-                    if coord not in shots:
+                    if f"{r},{c}" not in shots:
                         return False
         return True
 
@@ -64,7 +65,7 @@ class Room:
                 if coord in shots:
                     result_row.append("hit" if cell else "miss")
                 else:
-                    result_row.append("ship" if cell else "empty")
+                    result_row.append(cell if cell else "empty")  # send ship name
             result.append(result_row)
         return result
 
@@ -246,6 +247,14 @@ async def handle(ws):
                 room.boards[pidx] = result
                 room.ready[pidx] = True
 
+                # Store ship cell positions and orientations for move logic
+                for ship in msg.get("ships", []):
+                    name = ship.get("name")
+                    cells = ship.get("cells", [])
+                    room.ship_cells[pidx][name] = cells
+                    rows = [c["r"] for c in cells]
+                    room.ship_orientations[pidx][name] = 'H' if len(set(rows)) == 1 else 'V'
+
                 await send(ws, {"type": "placed"})
 
                 if all(room.ready):
@@ -300,7 +309,74 @@ async def handle(ws):
 
                 await broadcast_state(room)
 
-            # ── Rematch ──────────────────────────────────────────────────────
+            # ── Move Ship ─────────────────────────────────────────────────────
+            elif mtype == "move":
+                info = clients[ws]
+                if info["room"] is None:
+                    continue
+                room = rooms[info["room"]]
+                pidx = info["player"]
+
+                if room.over:
+                    continue
+                if room.turn != pidx:
+                    await send(ws, {"type": "error", "msg": "Not your turn"})
+                    continue
+                if not all(room.ready):
+                    continue
+
+                ship_name = msg.get("ship")
+                direction = msg.get("direction")  # 'forward' or 'backward'
+
+                if ship_name not in room.ship_cells[pidx]:
+                    await send(ws, {"type": "error", "msg": "Unknown ship"})
+                    continue
+
+                orientation = room.ship_orientations[pidx].get(ship_name, 'H')
+                cells = room.ship_cells[pidx][ship_name]
+
+                # Determine delta based on orientation and direction
+                # 'forward' = increasing index (right for H, down for V)
+                # 'backward' = decreasing index
+                if orientation == 'H':
+                    dr, dc = (0, 1) if direction == 'forward' else (0, -1)
+                else:
+                    dr, dc = (1, 0) if direction == 'forward' else (-1, 0)
+
+                new_cells = [{"r": cell["r"] + dr, "c": cell["c"] + dc} for cell in cells]
+
+                # Validate new positions
+                board = room.boards[pidx]
+                valid = True
+                for cell in new_cells:
+                    nr, nc = cell["r"], cell["c"]
+                    if not (0 <= nr < GRID_SIZE and 0 <= nc < GRID_SIZE):
+                        valid = False
+                        break
+                    # Check for collision with other ships (ignore this ship's own cells)
+                    existing = board[nr][nc]
+                    if existing is not None and existing != ship_name:
+                        valid = False
+                        break
+
+                if not valid:
+                    await send(ws, {"type": "error", "msg": "Can't move there"})
+                    continue
+
+                # Clear old cells
+                for cell in cells:
+                    board[cell["r"]][cell["c"]] = None
+
+                # Place in new cells
+                for cell in new_cells:
+                    board[cell["r"]][cell["c"]] = ship_name
+
+                room.ship_cells[pidx][ship_name] = new_cells
+
+                # Switch turn
+                opp = room.opponent(pidx)
+                room.turn = opp
+                await broadcast_state(room)
             elif mtype == "rematch":
                 info = clients[ws]
                 if info["room"] is None:
@@ -312,11 +388,13 @@ async def handle(ws):
                 room.ready  = [False, False]
                 room.turn   = 0
                 room.over   = False
+                room.ship_cells = [{}, {}]
+                room.ship_orientations = [{}, {}]
                 for p in room.players:
                     if p:
                         await send(p, {"type": "rematch"})
 
-    except websockets.exceptions.ConnectionClosed:
+    except Exception:
         pass
     finally:
         info = clients.pop(ws, {})
@@ -334,33 +412,64 @@ async def handle(ws):
             if all(p is None for p in room.players):
                 rooms.pop(code, None)
 
-# ─── HTTP Server (serves index.html) ───────────────────────────────────────────
-class Handler(http.server.SimpleHTTPRequestHandler):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, directory=os.path.dirname(__file__), **kwargs)
+# ─── Combined HTTP + WebSocket Server ─────────────────────────────────────────
 
-    def log_message(self, format, *args):
-        pass  # silence logs
+async def http_handler(request):
+    """Serve index.html for all non-WebSocket GET requests."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    index = os.path.join(here, "index.html")
+    return web.FileResponse(index)
 
-def run_http():
-    server = http.server.HTTPServer(("", 8000), Handler)
-    server.serve_forever()
+async def websocket_handler(request):
+    """Handle WebSocket upgrade and pass to game logic."""
+    ws_response = web.WebSocketResponse()
+    await ws_response.prepare(request)
 
-# ─── Entry Point ────────────────────────────────────────────────────────────────
+    # Wrap aiohttp WS in a shim compatible with our handle() logic
+    class WSShim:
+        def __init__(self, ws):
+            self._ws = ws
+            self._closed = False
+
+        async def send(self, data):
+            if not self._closed:
+                await self._ws.send_str(data)
+
+        async def __aiter__(self):
+            async for msg in self._ws:
+                if msg.type == aiohttp.WSMsgType.TEXT:
+                    yield msg.data
+                elif msg.type in (aiohttp.WSMsgType.CLOSE, aiohttp.WSMsgType.ERROR):
+                    break
+
+        async def close(self):
+            self._closed = True
+
+    shim = WSShim(ws_response)
+    await handle(shim)
+    return ws_response
+
 async def main():
-    http_thread = threading.Thread(target=run_http, daemon=True)
-    http_thread.start()
-    print("┌─────────────────────────────────────────┐")
-    print("│   🚢  Battleships Online Server          │")
-    print("│                                         │")
-    print("│   Web UI  →  http://localhost:8000      │")
-    print("│   WebSocket →  ws://localhost:8765      │")
-    print("│                                         │")
-    print("│   Share the URL with a friend!          │")
-    print("└─────────────────────────────────────────┘")
+    port = int(os.environ.get("PORT", 8000))
 
-    async with serve(handle, "0.0.0.0", 8765):
-        await asyncio.Future()  # run forever
+    app = web.Application()
+    app.router.add_get("/ws", websocket_handler)
+    app.router.add_get("/{tail:.*}", http_handler)
+
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", port)
+    await site.start()
+
+    print(f"┌─────────────────────────────────────────┐")
+    print(f"│   🚢  Battleships Online Server          │")
+    print(f"│                                         │")
+    print(f"│   Open →  http://localhost:{port}         │")
+    print(f"│                                         │")
+    print(f"│   Share the URL with a friend!          │")
+    print(f"└─────────────────────────────────────────┘")
+
+    await asyncio.Future()  # run forever
 
 if __name__ == "__main__":
     asyncio.run(main())
