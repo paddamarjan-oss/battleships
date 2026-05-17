@@ -1,0 +1,862 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BATTLESHIPS</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Share+Tech+Mono&display=swap');
+:root{
+  --bg:#0a0e14;--surface:#0f1620;--border:#1e3a5f;
+  --accent:#00c8ff;--danger:#ff3a3a;--hit:#ff5e00;
+  --miss:#1e3a5f;--ship:#2a6496;--text:#c8dff0;
+  --dim:#4a6a8a;--green:#00ff88;--gold:#ffd700;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:'Share Tech Mono',monospace;min-height:100vh;overflow-x:hidden;
+  background-image:radial-gradient(ellipse at 20% 50%,rgba(0,60,120,.15),transparent 60%),radial-gradient(ellipse at 80% 20%,rgba(0,200,255,.05),transparent 40%)}
+body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,.03) 2px,rgba(0,0,0,.03) 4px);pointer-events:none;z-index:9999}
+h1{font-family:'Bebas Neue',sans-serif;letter-spacing:.15em;color:var(--accent);text-shadow:0 0 20px rgba(0,200,255,.5)}
+.screen{display:none;animation:fadeIn .3s ease}
+.screen.active{display:flex;flex-direction:column;align-items:center}
+@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+
+/* Lobby */
+#lobby{justify-content:center;min-height:100vh;gap:2rem;padding:2rem}
+.logo{text-align:center}.logo h1{font-size:clamp(3rem,10vw,6rem)}
+.logo p{color:var(--dim);font-size:.85rem;letter-spacing:.2em;margin-top:.25rem}
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:2rem;width:min(420px,90vw);position:relative}
+.panel::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--accent),transparent)}
+.panel h2{font-family:'Bebas Neue',sans-serif;font-size:1.4rem;letter-spacing:.1em;color:var(--accent);margin-bottom:1.5rem}
+.input-group{display:flex;gap:.5rem}
+input[type=text]{flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);font-family:'Share Tech Mono',monospace;font-size:1.1rem;padding:.6rem 1rem;border-radius:3px;text-transform:uppercase;letter-spacing:.2em;outline:none;transition:border-color .2s}
+input[type=text]:focus{border-color:var(--accent)}
+input[type=text]::placeholder{color:var(--dim);text-transform:none;letter-spacing:0}
+.btn{font-family:'Bebas Neue',sans-serif;font-size:1.1rem;letter-spacing:.1em;padding:.6rem 1.5rem;border:none;border-radius:3px;cursor:pointer;transition:all .15s}
+.btn-primary{background:var(--accent);color:var(--bg)}.btn-primary:hover{filter:brightness(1.15);transform:translateY(-1px)}
+.btn-secondary{background:transparent;color:var(--accent);border:1px solid var(--accent)}.btn-secondary:hover{background:rgba(0,200,255,.1)}
+.btn-gold{background:transparent;color:var(--gold);border:1px solid var(--gold)}.btn-gold:hover{background:rgba(255,215,0,.1)}
+.btn:disabled{opacity:.4;cursor:not-allowed;transform:none!important}
+.divider{border:none;border-top:1px solid var(--border);margin:1.5rem 0}
+.error-msg{color:var(--danger);font-size:.8rem;margin-top:.5rem;min-height:1rem}
+
+/* Waiting */
+#waiting{justify-content:center;min-height:100vh;gap:1.5rem;text-align:center;padding:2rem}
+.code-display{font-family:'Bebas Neue',sans-serif;font-size:clamp(3rem,12vw,5rem);color:var(--accent);letter-spacing:.3em;text-shadow:0 0 30px rgba(0,200,255,.4);background:var(--surface);border:1px solid var(--border);padding:.5rem 2rem;border-radius:4px;cursor:pointer;transition:all .2s}
+.code-display:hover{border-color:var(--accent)}
+.pulse{animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+
+/* Placement */
+#placement{padding:1rem;gap:1rem;align-items:center;min-height:100vh}
+.placement-top{display:flex;gap:1.5rem;width:100%;max-width:1200px;align-items:flex-start;flex-wrap:wrap;justify-content:center}
+.ship-list{background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:.75rem;min-width:220px;max-width:250px}
+.ship-list h3{font-family:'Bebas Neue',sans-serif;font-size:1rem;color:var(--accent);letter-spacing:.1em;margin-bottom:.75rem}
+.ship-group{margin-bottom:.5rem}
+.ship-group-label{font-size:.6rem;color:var(--dim);letter-spacing:.15em;margin-bottom:.25rem}
+.ship-item{display:flex;align-items:center;gap:.5rem;padding:.35rem .5rem;border-radius:3px;cursor:pointer;border:1px solid transparent;transition:all .15s;margin-bottom:.2rem;font-size:.8rem}
+.ship-item:hover{background:rgba(0,200,255,.05);border-color:var(--border)}
+.ship-item.selected{background:rgba(0,200,255,.1);border-color:var(--accent)}
+.ship-item.placed{opacity:.4;pointer-events:none}.ship-item.placed .ship-name{text-decoration:line-through}
+.ship-cells-preview{display:flex;gap:1px}
+.sc-prev{width:10px;height:10px;background:var(--ship);border-radius:1px}
+.sc-prev.front{background:var(--accent)}
+.ship-name{flex:1}.ship-size{color:var(--dim);font-size:.7rem}
+.ability-tag{font-size:.55rem;color:var(--gold);border:1px solid var(--gold);border-radius:2px;padding:0 3px;letter-spacing:.05em}
+.placement-controls{display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.75rem}
+.placement-controls .btn{font-size:.85rem;padding:.4rem .8rem}
+.facing-hint{font-size:.65rem;color:var(--accent);text-align:center;letter-spacing:.1em;margin-top:.3rem}
+
+/* Grid */
+.grid-wrapper{display:flex;flex-direction:column;align-items:center;gap:.35rem}
+.grid-label{font-size:.65rem;letter-spacing:.2em;color:var(--dim);text-align:center}
+.grid{display:grid;gap:1px;user-select:none}
+.grid-20{grid-template-columns:16px repeat(20,1fr);grid-template-rows:16px repeat(20,1fr)}
+.grid-corner{width:16px;height:16px}
+.grid-header{display:flex;align-items:center;justify-content:center;font-size:.5rem;color:var(--dim);width:100%;height:16px}
+.grid-row-label{display:flex;align-items:center;justify-content:center;font-size:.5rem;color:var(--dim);width:16px}
+
+.cell{width:clamp(18px,2.2vw,28px);height:clamp(18px,2.2vw,28px);background:rgba(14,30,50,.8);border:1px solid rgba(30,58,95,.4);border-radius:1px;cursor:default;transition:background .1s;position:relative;display:flex;align-items:center;justify-content:center;font-size:.55rem}
+
+.cell.ship{background:var(--ship);border-color:rgba(0,200,255,.4)}
+.cell.ship-front{background:var(--accent)!important;border-color:var(--accent)!important;color:var(--bg);font-weight:bold}
+.cell.preview{background:rgba(0,200,255,.2);border-color:var(--accent)}
+.cell.preview-front{background:rgba(0,200,255,.5)!important;border-color:var(--accent)!important;color:var(--bg);font-weight:bold}
+.cell.preview-invalid{background:rgba(255,58,58,.2);border-color:var(--danger)}
+.cell.placeable:hover{background:rgba(0,200,255,.1);border-color:var(--accent);cursor:crosshair}
+
+.cell.hit{background:var(--hit)!important;border-color:#ff8c00!important}
+.cell.hit::after{content:'✕';color:#fff;font-size:.75rem;font-weight:bold}
+.cell.miss{background:rgba(20,40,70,.6)!important}
+.cell.miss::after{content:'·';color:var(--dim);font-size:1rem}
+.cell.my-ship{background:rgba(42,100,150,.6);border-color:rgba(0,200,255,.25)}
+.cell.my-ship-front{background:rgba(0,200,255,.3)!important;border-color:var(--accent)!important;color:var(--accent);font-weight:bold}
+.cell.my-ship-hit{background:var(--danger)!important;border-color:#f66!important}
+.cell.my-ship-hit::after{content:'✕';color:#fff;font-size:.75rem}
+.cell.enemy-target:hover{background:rgba(255,94,0,.25);border-color:var(--hit);cursor:crosshair}
+.cell.not-my-turn{cursor:not-allowed}
+.cell.my-ship-movable{cursor:pointer;outline:2px solid rgba(0,255,136,.4);outline-offset:-2px}
+.cell.my-ship-movable:hover{outline-color:var(--green);background:rgba(0,255,136,.2)!important}
+.cell.my-ship-selected{outline:2px solid var(--green)!important;outline-offset:-2px;background:rgba(0,255,136,.25)!important}
+.cell.recon-ship{background:rgba(255,215,0,.35)!important;border-color:var(--gold)!important}
+.cell.recon-empty{background:rgba(0,200,255,.08)!important;border-color:rgba(0,200,255,.2)!important}
+.cell.dive-active{outline:2px solid #8888ff;outline-offset:-2px}
+.cell.smoke-active-cell{outline:2px solid #aaaaaa;outline-offset:-2px}
+
+/* Recon targeting overlay */
+.recon-targeting .cell.unknown:hover{background:rgba(255,215,0,.2)!important;border-color:var(--gold)!important;cursor:crosshair}
+.recon-box{position:absolute;border:2px solid var(--gold);pointer-events:none;border-radius:2px;z-index:10;transition:all .05s}
+
+/* Game */
+#game{padding:1rem;gap:.75rem;align-items:center;min-height:100vh}
+.game-header{display:flex;align-items:center;gap:1rem;width:100%;max-width:1200px}
+.game-header h1{font-size:1.5rem}
+.status-bar{background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:.5rem 1rem;font-size:.8rem;letter-spacing:.05em;flex:1;text-align:center}
+.status-bar.my-turn{border-color:var(--green);color:var(--green)}
+.status-bar.their-turn{border-color:var(--dim);color:var(--dim)}
+.status-bar.game-over{border-color:var(--accent);color:var(--accent)}
+.status-bar.barrage{border-color:var(--gold);color:var(--gold)}
+.boards-row{display:flex;gap:1.5rem;flex-wrap:wrap;justify-content:center;align-items:flex-start}
+.sunk-list{margin-top:.4rem;font-size:.65rem;color:var(--dim);min-height:.8rem;max-width:420px;line-height:1.4}
+.sunk-ship{color:var(--danger)}
+
+/* Action bar */
+.action-bar{display:flex;gap:.5rem;flex-wrap:wrap;justify-content:center;align-items:center;margin-bottom:.25rem}
+.action-btn{font-family:'Bebas Neue',sans-serif;font-size:.9rem;letter-spacing:.08em;padding:.4rem 1rem;border-radius:3px;border:1px solid var(--border);background:transparent;color:var(--dim);cursor:pointer;transition:all .15s}
+.action-btn.active-fire{border-color:var(--hit);color:var(--hit);background:rgba(255,94,0,.1)}
+.action-btn.active-move{border-color:var(--green);color:var(--green);background:rgba(0,255,136,.1)}
+.action-btn.active-ability{border-color:var(--gold);color:var(--gold);background:rgba(255,215,0,.1)}
+
+/* Ability panel */
+.ability-panel{background:var(--surface);border:1px solid var(--gold);border-radius:4px;padding:.6rem 1rem;display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;justify-content:center;font-size:.75rem;color:var(--gold);max-width:600px}
+.ability-ship-list{display:flex;gap:.4rem;flex-wrap:wrap}
+.ability-chip{padding:.2rem .5rem;border:1px solid var(--gold);border-radius:3px;cursor:pointer;font-size:.7rem;transition:all .15s;font-family:'Bebas Neue',sans-serif;letter-spacing:.05em;color:var(--gold)}
+.ability-chip:hover{background:rgba(255,215,0,.15)}
+.ability-chip.selected{background:rgba(255,215,0,.25);border-color:#fff}
+.ability-chip.used{opacity:.3;pointer-events:none;text-decoration:line-through}
+
+/* Move panel */
+.move-panel{background:var(--surface);border:1px solid var(--green);border-radius:4px;padding:.6rem 1rem;display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;justify-content:center}
+.move-panel .ship-label{color:var(--green);font-size:.8rem;letter-spacing:.05em}
+
+/* Recon panel */
+.recon-panel{background:var(--surface);border:1px solid var(--gold);border-radius:4px;padding:.6rem 1rem;font-size:.75rem;color:var(--gold);text-align:center}
+
+/* Overlay */
+.overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:100;align-items:center;justify-content:center;flex-direction:column;gap:1.5rem;backdrop-filter:blur(4px)}
+.overlay.active{display:flex;animation:fadeIn .3s ease}
+.overlay-box{background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:3rem;text-align:center;max-width:360px;width:90%}
+.overlay-title{font-family:'Bebas Neue',sans-serif;font-size:3rem;letter-spacing:.1em;margin-bottom:.5rem}
+.win .overlay-title{color:var(--green);text-shadow:0 0 20px rgba(0,255,136,.5)}
+.lose .overlay-title{color:var(--danger);text-shadow:0 0 20px rgba(255,58,58,.5)}
+.overlay-sub{color:var(--dim);font-size:.9rem;margin-bottom:1.5rem}
+.overlay-btns{display:flex;gap:1rem;justify-content:center;flex-wrap:wrap}
+
+.toast{position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%) translateY(4rem);background:var(--surface);border:1px solid var(--accent);color:var(--accent);padding:.6rem 1.5rem;border-radius:4px;font-size:.8rem;z-index:200;transition:transform .3s ease;white-space:nowrap;max-width:90vw;text-align:center}
+.toast.show{transform:translateX(-50%) translateY(0)}
+
+@media(max-width:700px){.cell{width:16px;height:16px}.boards-row{gap:.75rem}}
+</style>
+</head>
+<body>
+
+<!-- LOBBY -->
+<div id="lobby" class="screen active">
+  <div class="logo"><h1>BATTLESHIPS</h1><p>ONLINE NAVAL WARFARE · 20×20</p></div>
+  <div class="panel">
+    <h2>⚓ New Game</h2>
+    <button class="btn btn-primary" style="width:100%" onclick="createRoom()">CREATE ROOM</button>
+    <hr class="divider">
+    <h2>🔗 Join Game</h2>
+    <div class="input-group">
+      <input type="text" id="joinCode" placeholder="Room code (e.g. ABCD)" maxlength="4">
+      <button class="btn btn-secondary" onclick="joinRoom()">JOIN</button>
+    </div>
+    <div class="error-msg" id="lobbyError"></div>
+  </div>
+</div>
+
+<!-- WAITING -->
+<div id="waiting" class="screen">
+  <div class="logo"><h1>BATTLESHIPS</h1></div>
+  <p style="color:var(--dim);letter-spacing:.15em;font-size:.8rem">ROOM CODE</p>
+  <div class="code-display" id="roomCodeDisplay" onclick="copyCode()" title="Click to copy"></div>
+  <p style="color:var(--dim);font-size:.85rem">Share this code with your opponent</p>
+  <p class="pulse" style="color:var(--accent);font-size:.9rem">⟳ Waiting for opponent…</p>
+  <button class="btn btn-secondary" onclick="goLobby()" style="margin-top:1rem">← Back</button>
+</div>
+
+<!-- PLACEMENT -->
+<div id="placement" class="screen">
+  <h1 style="font-size:1.8rem;letter-spacing:.1em">DEPLOY YOUR FLEET</h1>
+  <div class="placement-top">
+    <div class="ship-list">
+      <h3>YOUR FLEET</h3>
+      <div id="shipSelector"></div>
+      <div class="placement-controls">
+        <button class="btn btn-secondary" onclick="rotateShip()">↻ ROTATE</button>
+        <button class="btn btn-secondary" onclick="flipFacing()">⇄ FLIP BOW</button>
+        <button class="btn btn-secondary" onclick="randomPlace()">⚄ RANDOM</button>
+        <button class="btn btn-secondary" onclick="clearBoard()">✕ CLEAR</button>
+      </div>
+      <div class="facing-hint" id="facingHint"></div>
+      <div id="placementStatus" style="margin-top:.5rem;font-size:.75rem;color:var(--dim)"></div>
+    </div>
+    <div class="grid-wrapper">
+      <div class="grid-label">CLICK = PLACE BOW · RIGHT-CLICK = ROTATE · ⇄ = FLIP BOW</div>
+      <div id="placementGrid"></div>
+    </div>
+  </div>
+  <div style="display:flex;gap:1rem;flex-wrap:wrap;justify-content:center">
+    <button class="btn btn-primary" id="confirmBtn" onclick="confirmPlacement()" disabled>✓ CONFIRM DEPLOYMENT</button>
+  </div>
+  <div id="waitingOpponent" style="display:none;color:var(--dim);font-size:.8rem;margin-top:.5rem" class="pulse">Waiting for opponent to deploy…</div>
+</div>
+
+<!-- GAME -->
+<div id="game" class="screen">
+  <div class="game-header">
+    <h1>BATTLESHIPS</h1>
+    <div class="status-bar" id="statusBar">—</div>
+  </div>
+
+  <!-- Action bar (shown on your turn) -->
+  <div class="action-bar" id="actionBar" style="display:none">
+    <button class="action-btn active-fire" id="btnFire" onclick="setMode('fire')">🎯 FIRE</button>
+    <button class="action-btn" id="btnMove" onclick="setMode('move')">⛵ ADVANCE</button>
+    <button class="action-btn" id="btnAbility" onclick="setMode('ability')">⚡ ABILITY</button>
+  </div>
+
+  <!-- Mode panels -->
+  <div id="movePanelEl" class="move-panel" style="display:none">
+    <span class="ship-label" id="moveShipLabel">CLICK A SHIP TO SELECT</span>
+    <button class="btn btn-secondary" onclick="doAdvance()" style="padding:.35rem .75rem;font-size:.85rem">▶ ADVANCE</button>
+    <button class="btn" onclick="cancelSub()" style="padding:.35rem .75rem;border:1px solid var(--dim);color:var(--dim);font-size:.85rem">✕</button>
+  </div>
+
+  <div id="abilityPanelEl" class="ability-panel" style="display:none">
+    <span>SELECT SHIP:</span>
+    <div class="ability-ship-list" id="abilityShipList"></div>
+    <div id="abilityDesc" style="width:100%;text-align:center;font-size:.7rem;color:var(--dim)"></div>
+    <div id="abilityActionRow" style="display:none;gap:.5rem;justify-content:center;flex-wrap:wrap"></div>
+    <button class="btn" onclick="cancelSub()" style="padding:.3rem .7rem;border:1px solid var(--dim);color:var(--dim);font-size:.8rem">✕</button>
+  </div>
+
+  <div id="reconPanelEl" class="recon-panel" style="display:none">
+    🔍 RECON: Click enemy grid to scan a 5×5 area
+  </div>
+
+  <div class="boards-row">
+    <div class="grid-wrapper">
+      <div class="grid-label">MY FLEET</div>
+      <div id="myGrid"></div>
+      <div class="sunk-list" id="sunkByOpp"></div>
+    </div>
+    <div class="grid-wrapper">
+      <div class="grid-label">ENEMY WATERS</div>
+      <div id="enemyGrid"></div>
+      <div class="sunk-list" id="sunkByMe"></div>
+    </div>
+  </div>
+</div>
+
+<!-- OVERLAY -->
+<div class="overlay" id="resultOverlay">
+  <div class="overlay-box" id="resultBox">
+    <div class="overlay-title" id="resultTitle">—</div>
+    <div class="overlay-sub" id="resultSub">—</div>
+    <div class="overlay-btns">
+      <button class="btn btn-primary" onclick="requestRematch()">↺ REMATCH</button>
+      <button class="btn btn-secondary" onclick="goLobby()">⌂ LOBBY</button>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const GRID_SIZE = 20;
+const COLS = "ABCDEFGHIJKLMNOPQRST";
+
+// Ship definitions matching server
+const SHIP_DEFS = [
+  {name:"Carrier",    size:7, count:1, ability:"Recon",    abilityDesc:"Reveal a 5×5 area on enemy waters"},
+  {name:"Battleship", size:5, count:2, ability:"Barrage",  abilityDesc:"Fire 3 shots this turn"},
+  {name:"Cruiser",    size:4, count:2, ability:"Smoke",    abilityDesc:"Deploy smoke — blocks the next enemy shot (costs your turn)"},
+  {name:"Submarine",  size:3, count:1, ability:"Dive",     abilityDesc:"Dive — immune to next enemy shot (costs your turn)"},
+  {name:"Destroyer",  size:2, count:3, ability:"Ram",      abilityDesc:"Ram — advance 2 squares instead of 1"},
+];
+
+// Expand to full ship list with unique ids
+const SHIP_LIST = [];
+for(const def of SHIP_DEFS){
+  for(let i=0;i<def.count;i++){
+    const suffix = def.count>1 ? ` ${i+1}` : '';
+    SHIP_LIST.push({id:`${def.name}${suffix}`.trim(), name:def.name, size:def.size, def});
+  }
+}
+
+// State
+let ws=null, myPlayer=null, roomCode=null, currentScreen='lobby';
+let placementBoard = Array.from({length:GRID_SIZE},()=>Array(GRID_SIZE).fill(null));
+let placedShips={}, placedFacing={}, selectedShip=null;
+let orientation='H', facing='right', hoverCells=[];
+let myShipData=[], myReady=false;
+
+let gameState=null, myTurnCache=false;
+let actionMode='fire';
+let selectedMoveShip=null, selectedAbilityShip=null;
+let myShipPositions={};  // id -> Set of "r,c"
+let reconMode=false, reconCells={};  // revealed cells from recon
+let reconBox=null;
+
+// WebSocket
+function connect(){
+  const proto=location.protocol==='https:'?'wss':'ws';
+  ws=new WebSocket(`${proto}://${location.host}/ws`);
+  ws.onmessage=e=>handleMessage(JSON.parse(e.data));
+  ws.onclose=()=>{if(currentScreen!=='lobby')toast('Connection lost. Refresh.',4000);};
+  ws.onerror=()=>{};
+}
+function send(obj){if(ws&&ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify(obj));}
+
+function handleMessage(msg){
+  switch(msg.type){
+    case 'joined':
+      myPlayer=msg.player; roomCode=msg.code;
+      if(myPlayer===0) showWaiting(); else showPlacement();
+      break;
+    case 'opponent_joined': showPlacement(); break;
+    case 'placed':
+      myReady=true;
+      document.getElementById('waitingOpponent').style.display='block';
+      document.getElementById('confirmBtn').disabled=true;
+      document.getElementById('placementStatus').textContent='Deployed! Waiting for opponent…';
+      break;
+    case 'opponent_placed': toast('Opponent has deployed their fleet!'); break;
+    case 'start': showGame(); break;
+    case 'state':
+      gameState=msg; myTurnCache=msg.my_turn;
+      if(msg.my_board){
+        const np={};
+        for(let r=0;r<GRID_SIZE;r++)
+          for(let c=0;c<GRID_SIZE;c++){
+            const v=msg.my_board.grid[r][c];
+            if(v&&v!=='hit'&&v!=='miss'&&v!=='empty'){
+              if(!np[v])np[v]=new Set();
+              np[v].add(`${r},${c}`);
+            }
+          }
+        myShipPositions=np;
+      }
+      renderGame();
+      break;
+    case 'recon_result':
+      reconCells=msg.cells;
+      reconMode=false;
+      renderGame();
+      toast('🔍 Recon complete!',3000);
+      break;
+    case 'ability_event':
+      if(msg.event==='smoke_blocked') toast('💨 Enemy smoke screen blocked your shot!',3000);
+      else if(msg.event==='smoke_up')  toast('💨 Smoke screen deployed!',2500);
+      else if(msg.event==='barrage_start') toast('💥 BARRAGE! Fire 3 shots!',2500);
+      else if(msg.event==='dive_start')    toast('🤿 Submarine diving — immune to next shot!',2500);
+      break;
+    case 'rematch':
+      closeOverlay();
+      placementBoard=Array.from({length:GRID_SIZE},()=>Array(GRID_SIZE).fill(null));
+      placedShips={}; placedFacing={}; myShipData=[]; selectedShip=null;
+      myReady=false; orientation='H'; facing='right';
+      actionMode='fire'; selectedMoveShip=null; selectedAbilityShip=null;
+      reconMode=false; reconCells={};
+      showPlacement();
+      break;
+    case 'opponent_left': toast('Opponent disconnected.',4000); closeOverlay(); break;
+    case 'error': toast('⚠ '+msg.msg,3000); break;
+  }
+}
+
+// Lobby
+function createRoom(){connect();ws.onopen=()=>send({type:'create'});}
+function joinRoom(){
+  const code=document.getElementById('joinCode').value.trim().toUpperCase();
+  if(code.length!==4){setError('Enter a 4-letter room code');return;}
+  connect();ws.onopen=()=>send({type:'join',code});
+}
+function setError(m){document.getElementById('lobbyError').textContent=m;}
+function goLobby(){
+  if(ws){ws.close();ws=null;}
+  closeOverlay(); showScreen('lobby');
+  document.getElementById('joinCode').value=''; setError('');
+}
+function showScreen(n){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById(n).classList.add('active');
+  currentScreen=n;
+}
+function showWaiting(){document.getElementById('roomCodeDisplay').textContent=roomCode;showScreen('waiting');}
+function showPlacement(){buildShipSelector();buildPlacementGrid();document.getElementById('waitingOpponent').style.display='none';document.getElementById('placementStatus').textContent='';document.getElementById('confirmBtn').disabled=true;showScreen('placement');}
+function showGame(){showScreen('game');}
+function copyCode(){navigator.clipboard.writeText(roomCode).then(()=>toast('Room code copied!'));}
+
+// Facing
+function facingArrow(){return {right:'▶',left:'◀',down:'▼',up:'▲'}[facing]||'▶';}
+function updateFacingHint(){
+  const el=document.getElementById('facingHint');
+  if(!selectedShip){el.textContent='';return;}
+  el.textContent=`BOW: ${facing.toUpperCase()} ${facingArrow()}`;
+}
+function rotateShip(){
+  if(orientation==='H'){orientation='V';facing=(facing==='right')?'down':'up';}
+  else{orientation='H';facing=(facing==='down')?'right':'left';}
+  clearHover();updateFacingHint();
+}
+function flipFacing(){
+  if(orientation==='H')facing=(facing==='right')?'left':'right';
+  else facing=(facing==='down')?'up':'down';
+  clearHover();updateFacingHint();
+}
+
+function previewCells(r,c){
+  if(!selectedShip)return[];
+  const ship=SHIP_LIST.find(s=>s.id===selectedShip);
+  if(!ship)return[];
+  const cells=[];
+  for(let i=0;i<ship.size;i++){
+    if(orientation==='H'){const dc=(facing==='right')?-i:i;cells.push({r,c:c+dc});}
+    else{const dr=(facing==='down')?-i:i;cells.push({r:r+dr,c});}
+  }
+  return cells;
+}
+function isValidPreview(cells){
+  for(const {r,c} of cells){
+    if(r<0||r>=GRID_SIZE||c<0||c>=GRID_SIZE)return false;
+    if(placementBoard[r][c]!==null)return false;
+  }
+  return true;
+}
+
+// Placement grid
+function buildPlacementGrid(){
+  const container=document.getElementById('placementGrid');
+  container.innerHTML='';
+  const grid=document.createElement('div');
+  grid.className='grid grid-20';
+  const corner=document.createElement('div');corner.className='grid-corner';grid.appendChild(corner);
+  for(let c=0;c<GRID_SIZE;c++){const h=document.createElement('div');h.className='grid-header';h.textContent=COLS[c];grid.appendChild(h);}
+  for(let r=0;r<GRID_SIZE;r++){
+    const rl=document.createElement('div');rl.className='grid-row-label';rl.textContent=r+1;grid.appendChild(rl);
+    for(let c=0;c<GRID_SIZE;c++){
+      const cell=document.createElement('div');
+      cell.className='cell placeable';cell.dataset.r=r;cell.dataset.c=c;
+      cell.addEventListener('mouseenter',()=>onPlacementHover(r,c));
+      cell.addEventListener('mouseleave',()=>clearHover());
+      cell.addEventListener('click',()=>onPlacementClick(r,c));
+      cell.addEventListener('contextmenu',e=>{e.preventDefault();rotateShip();});
+      grid.appendChild(cell);
+    }
+  }
+  container.appendChild(grid);
+  renderPlacementBoard();
+}
+
+function buildShipSelector(){
+  const container=document.getElementById('shipSelector');
+  container.innerHTML='';
+  for(const def of SHIP_DEFS){
+    const group=document.createElement('div');group.className='ship-group';
+    const label=document.createElement('div');label.className='ship-group-label';
+    label.textContent=`${def.name.toUpperCase()} ×${def.count}`;
+    group.appendChild(label);
+    for(let i=0;i<def.count;i++){
+      const suffix=def.count>1?` ${i+1}`:'';
+      const sid=`${def.name}${suffix}`.trim();
+      const item=document.createElement('div');
+      item.className='ship-item'+(placedShips[sid]?' placed':'');
+      item.id=`ship-${sid}`;item.onclick=()=>selectShip(sid);
+      const cellsDiv=document.createElement('div');cellsDiv.className='ship-cells-preview';
+      for(let j=0;j<def.size;j++){const sc=document.createElement('div');sc.className='sc-prev'+(j===0?' front':'');cellsDiv.appendChild(sc);}
+      const nm=document.createElement('span');nm.className='ship-name';nm.textContent=sid;
+      const ab=document.createElement('span');ab.className='ability-tag';ab.textContent=def.ability;
+      item.appendChild(cellsDiv);item.appendChild(nm);item.appendChild(ab);
+      group.appendChild(item);
+    }
+    container.appendChild(group);
+  }
+}
+
+function selectShip(id){
+  if(placedShips[id])return;
+  selectedShip=id;
+  document.querySelectorAll('.ship-item').forEach(el=>el.classList.remove('selected'));
+  const el=document.getElementById(`ship-${id}`);
+  if(el)el.classList.add('selected');
+  updateFacingHint();
+}
+
+function onPlacementHover(r,c){if(!selectedShip)return;hoverCells=previewCells(r,c);renderPlacementBoard();}
+function clearHover(){hoverCells=[];renderPlacementBoard();}
+
+function onPlacementClick(r,c){
+  if(!selectedShip)return;
+  const cells=previewCells(r,c);
+  if(!isValidPreview(cells))return;
+  if(placedShips[selectedShip]){placedShips[selectedShip].forEach(({r,c})=>{placementBoard[r][c]=null;});}
+  cells.forEach(({r,c})=>{placementBoard[r][c]=selectedShip;});
+  placedShips[selectedShip]=cells;
+  placedFacing[selectedShip]=facing;
+  hoverCells=[];
+  const el=document.getElementById(`ship-${selectedShip}`);
+  if(el)el.classList.add('placed');
+  const next=SHIP_LIST.find(s=>!placedShips[s.id]);
+  selectedShip=next?next.id:null;
+  buildShipSelector();
+  if(selectedShip)selectShip(selectedShip);
+  renderPlacementBoard();checkAllPlaced();
+}
+
+function renderPlacementBoard(){
+  const valid=hoverCells.length>0?isValidPreview(hoverCells):true;
+  const hoverSet=new Set(hoverCells.map(({r,c})=>`${r},${c}`));
+  const hoverFront=hoverCells.length>0?`${hoverCells[0].r},${hoverCells[0].c}`:'';
+  const frontCells={};
+  for(const [name,cells] of Object.entries(placedShips)){if(cells.length>0)frontCells[`${cells[0].r},${cells[0].c}`]=name;}
+  for(let r=0;r<GRID_SIZE;r++){
+    for(let c=0;c<GRID_SIZE;c++){
+      const cell=document.querySelector(`#placementGrid .cell[data-r="${r}"][data-c="${c}"]`);
+      if(!cell)continue;
+      const coord=`${r},${c}`;
+      cell.className='cell placeable';cell.textContent='';
+      if(hoverSet.has(coord)){
+        cell.classList.add(valid?'preview':'preview-invalid');
+        if(coord===hoverFront&&valid){cell.classList.add('preview-front');cell.textContent=facingArrow();}
+      } else if(placementBoard[r][c]){
+        cell.classList.add('ship');
+        if(frontCells[coord]){
+          cell.classList.add('ship-front');
+          const sid=placementBoard[r][c];
+          const f=placedFacing[sid]||'right';
+          cell.textContent={right:'▶',left:'◀',down:'▼',up:'▲'}[f]||'▶';
+        }
+      }
+    }
+  }
+}
+
+function checkAllPlaced(){
+  const all=SHIP_LIST.every(s=>placedShips[s.id]);
+  document.getElementById('confirmBtn').disabled=!all||myReady;
+  if(all)document.getElementById('placementStatus').textContent='Fleet ready! Confirm when ready.';
+}
+
+function clearBoard(){
+  placementBoard=Array.from({length:GRID_SIZE},()=>Array(GRID_SIZE).fill(null));
+  placedShips={};placedFacing={};selectedShip=null;hoverCells=[];
+  buildShipSelector();renderPlacementBoard();checkAllPlaced();
+}
+
+function randomPlace(){
+  clearBoard();
+  for(const ship of SHIP_LIST){
+    let placed=false,tries=0;
+    while(!placed&&tries<500){
+      tries++;
+      const o=Math.random()<.5?'H':'V';
+      const faceOpts=o==='H'?['right','left']:['down','up'];
+      const f=faceOpts[Math.floor(Math.random()*2)];
+      const r=Math.floor(Math.random()*GRID_SIZE);
+      const c=Math.floor(Math.random()*GRID_SIZE);
+      const cells=[];let valid=true;
+      for(let i=0;i<ship.size;i++){
+        let nr=r,nc=c;
+        if(o==='H')nc=c+((f==='right')?-i:i);
+        else nr=r+((f==='down')?-i:i);
+        if(nr<0||nr>=GRID_SIZE||nc<0||nc>=GRID_SIZE||placementBoard[nr][nc]!==null){valid=false;break;}
+        cells.push({r:nr,c:nc});
+      }
+      if(valid){
+        cells.forEach(({r,c})=>{placementBoard[r][c]=ship.id;});
+        placedShips[ship.id]=cells;placedFacing[ship.id]=f;placed=true;
+      }
+    }
+  }
+  buildShipSelector();renderPlacementBoard();checkAllPlaced();
+}
+
+function confirmPlacement(){
+  if(myReady)return;
+  const ships=SHIP_LIST.map(ship=>({
+    id:ship.id, name:ship.name, size:ship.size,
+    cells:placedShips[ship.id],
+    facing:placedFacing[ship.id]||'right',
+  }));
+  myShipData=ships;
+  send({type:'place',ships});
+}
+
+// Game mode
+function setMode(mode){
+  actionMode=mode;selectedMoveShip=null;selectedAbilityShip=null;reconMode=false;
+  document.getElementById('btnFire').className='action-btn'+(mode==='fire'?' active-fire':'');
+  document.getElementById('btnMove').className='action-btn'+(mode==='move'?' active-move':'');
+  document.getElementById('btnAbility').className='action-btn'+(mode==='ability'?' active-ability':'');
+  document.getElementById('movePanelEl').style.display=mode==='move'?'flex':'none';
+  document.getElementById('abilityPanelEl').style.display=mode==='ability'?'flex':'none';
+  document.getElementById('reconPanelEl').style.display='none';
+  document.getElementById('moveShipLabel').textContent='CLICK A SHIP TO SELECT';
+  if(mode==='ability')buildAbilityPanel();
+  renderGame();
+}
+
+function cancelSub(){
+  selectedMoveShip=null;selectedAbilityShip=null;reconMode=false;
+  document.getElementById('moveShipLabel').textContent='CLICK A SHIP TO SELECT';
+  document.getElementById('abilityActionRow').style.display='none';
+  document.getElementById('abilityDesc').textContent='';
+  document.getElementById('reconPanelEl').style.display='none';
+  renderGame();
+}
+
+function buildAbilityPanel(){
+  if(!gameState||!gameState.my_board)return;
+  const avail=gameState.my_board.abilities||{};
+  const list=document.getElementById('abilityShipList');
+  list.innerHTML='';
+  for(const [sid,ability] of Object.entries(avail)){
+    const chip=document.createElement('div');
+    chip.className='ability-chip';
+    chip.textContent=sid;
+    chip.onclick=()=>selectAbilityShip(sid,ability,chip);
+    list.appendChild(chip);
+  }
+  if(Object.keys(avail).length===0){
+    list.innerHTML='<span style="color:var(--dim);font-size:.7rem">No abilities available</span>';
+  }
+}
+
+function selectAbilityShip(sid,ability,chipEl){
+  selectedAbilityShip=sid;
+  document.querySelectorAll('.ability-chip').forEach(c=>c.classList.remove('selected'));
+  if(chipEl)chipEl.classList.add('selected');
+  const def=SHIP_LIST.find(s=>s.id===sid);
+  const desc=def?def.def.abilityDesc:'';
+  document.getElementById('abilityDesc').textContent=desc;
+  const actionRow=document.getElementById('abilityActionRow');
+  actionRow.innerHTML='';
+  actionRow.style.display='flex';
+
+  if(ability==='recon'){
+    reconMode=true;
+    document.getElementById('reconPanelEl').style.display='block';
+    document.getElementById('abilityActionRow').style.display='none';
+    renderGame();
+  } else {
+    reconMode=false;
+    document.getElementById('reconPanelEl').style.display='none';
+    const btn=document.createElement('button');
+    btn.className='btn btn-gold';btn.style.fontSize='.8rem';btn.style.padding='.35rem .8rem';
+    btn.textContent='ACTIVATE';
+    btn.onclick=()=>activateAbility(sid,ability);
+    actionRow.appendChild(btn);
+    renderGame();
+  }
+}
+
+function activateAbility(sid,ability){
+  if(!sid)return;
+  if(ability==='ram'){
+    send({type:'ability',ship:sid});
+  } else if(ability==='barrage'){
+    send({type:'ability',ship:sid});
+  } else if(ability==='smoke'){
+    send({type:'ability',ship:sid});
+  } else if(ability==='dive'){
+    send({type:'ability',ship:sid});
+  }
+  cancelSub();
+}
+
+function activateRecon(r,c){
+  if(!reconMode||!selectedAbilityShip)return;
+  send({type:'ability',ship:selectedAbilityShip,r,c});
+  reconMode=false;
+  document.getElementById('reconPanelEl').style.display='none';
+  cancelSub();
+}
+
+// Game grids
+function buildGameGrid(id){
+  const container=document.getElementById(id);
+  container.innerHTML='';
+  const grid=document.createElement('div');grid.className='grid grid-20';
+  const corner=document.createElement('div');corner.className='grid-corner';grid.appendChild(corner);
+  for(let c=0;c<GRID_SIZE;c++){const h=document.createElement('div');h.className='grid-header';h.textContent=COLS[c];grid.appendChild(h);}
+  for(let r=0;r<GRID_SIZE;r++){
+    const rl=document.createElement('div');rl.className='grid-row-label';rl.textContent=r+1;grid.appendChild(rl);
+    for(let c=0;c<GRID_SIZE;c++){
+      const cell=document.createElement('div');cell.className='cell';cell.dataset.r=r;cell.dataset.c=c;
+      grid.appendChild(cell);
+    }
+  }
+  container.appendChild(grid);
+}
+
+function renderGame(){
+  if(!gameState)return;
+  const {my_board,enemy_board,my_turn,over,winner,sunk_by_me,sunk_by_opp,in_barrage,barrage_left}=gameState;
+  if(!document.querySelector('#myGrid .grid'))buildGameGrid('myGrid');
+  if(!document.querySelector('#enemyGrid .grid'))buildGameGrid('enemyGrid');
+
+  const actionBar=document.getElementById('actionBar');
+  actionBar.style.display=(my_turn&&!over)?'flex':'none';
+  if(!my_turn||over){
+    actionMode='fire';selectedMoveShip=null;selectedAbilityShip=null;reconMode=false;
+    document.getElementById('movePanelEl').style.display='none';
+    document.getElementById('abilityPanelEl').style.display='none';
+    document.getElementById('reconPanelEl').style.display='none';
+    document.getElementById('btnFire').className='action-btn active-fire';
+    document.getElementById('btnMove').className='action-btn';
+    document.getElementById('btnAbility').className='action-btn';
+  }
+
+  // My board
+  if(my_board){
+    const {grid,fronts,orients,fwd_inc}=my_board;
+    const diveActive=my_body&&gameState.dive_active;
+    for(let r=0;r<GRID_SIZE;r++){
+      for(let c=0;c<GRID_SIZE;c++){
+        const val=grid[r][c];
+        const old=document.querySelector(`#myGrid .cell[data-r="${r}"][data-c="${c}"]`);
+        if(!old)continue;
+        const cell=old.cloneNode(false);old.parentNode.replaceChild(cell,old);
+        cell.dataset.r=r;cell.dataset.c=c;
+        cell.className='cell';cell.textContent='';
+        const coord=`${r},${c}`;
+        const isFront=fronts&&fronts[coord];
+        if(val==='hit')cell.classList.add('my-ship-hit');
+        else if(val==='miss')cell.classList.add('miss');
+        else if(val&&val!=='empty'){
+          if(isFront){
+            cell.classList.add('my-ship-front');
+            const o=orients[val];const fi=fwd_inc[val];
+            cell.textContent=o==='H'?(fi?'▶':'◀'):(fi?'▼':'▲');
+          } else cell.classList.add('my-ship');
+          if(my_turn&&!over&&actionMode==='move'){
+            cell.classList.add('my-ship-movable');
+            cell.addEventListener('click',()=>selectShipAtCell(r,c));
+          }
+          if(selectedMoveShip&&myShipPositions[selectedMoveShip]&&myShipPositions[selectedMoveShip].has(coord))
+            cell.classList.add('my-ship-selected');
+        }
+      }
+    }
+  }
+
+  // Enemy board
+  if(enemy_board){
+    const isRecon=reconMode;
+    if(isRecon) document.querySelector('#enemyGrid .grid')&&document.getElementById('enemyGrid').classList.add('recon-targeting');
+    else document.getElementById('enemyGrid').classList.remove('recon-targeting');
+    for(let r=0;r<GRID_SIZE;r++){
+      for(let c=0;c<GRID_SIZE;c++){
+        const old=document.querySelector(`#enemyGrid .cell[data-r="${r}"][data-c="${c}"]`);
+        if(!old)continue;
+        const cell=old.cloneNode(false);old.parentNode.replaceChild(cell,old);
+        cell.dataset.r=r;cell.dataset.c=c;
+        cell.className='cell';cell.textContent='';
+        const coord=`${r},${c}`;
+        const val=enemy_board[r][c];
+        const reconVal=reconCells[coord];
+        if(val==='hit')cell.classList.add('hit');
+        else if(val==='miss')cell.classList.add('miss');
+        else{
+          if(reconVal==='ship')cell.classList.add('recon-ship');
+          else if(reconVal==='empty')cell.classList.add('recon-empty');
+          cell.classList.add('unknown');
+          if(my_turn&&!over){
+            if(isRecon){
+              cell.addEventListener('click',()=>activateRecon(r,c));
+              cell.style.cursor='crosshair';
+            } else if(actionMode==='fire'){
+              cell.classList.add('enemy-target');
+              cell.addEventListener('click',()=>fireShot(r,c));
+            } else cell.classList.add('not-my-turn');
+          } else cell.classList.add('not-my-turn');
+        }
+      }
+    }
+  }
+
+  // Status bar
+  const bar=document.getElementById('statusBar');
+  if(over){
+    const iWon=winner===myPlayer;
+    bar.textContent=iWon?'🏆 VICTORY':'💀 DEFEAT';
+    bar.className='status-bar game-over';
+    showResult(iWon);
+  } else if(in_barrage){
+    bar.textContent=`💥 BARRAGE! ${barrage_left} SHOT${barrage_left!==1?'S':''} REMAINING`;
+    bar.className='status-bar barrage';
+  } else {
+    bar.textContent=my_turn?'⚡ YOUR TURN':'⏳ ENEMY TURN…';
+    bar.className=`status-bar ${my_turn?'my-turn':'their-turn'}`;
+  }
+
+  document.getElementById('sunkByMe').innerHTML=sunk_by_me&&sunk_by_me.length?'SUNK: '+sunk_by_me.map(s=>`<span class="sunk-ship">${s}</span>`).join(', '):'';
+  document.getElementById('sunkByOpp').innerHTML=sunk_by_opp&&sunk_by_opp.length?'LOST: '+sunk_by_opp.map(s=>`<span class="sunk-ship">${s}</span>`).join(', '):'';
+}
+
+function selectShipAtCell(r,c){
+  if(!myTurnCache||gameState.over)return;
+  const coord=`${r},${c}`;
+  for(const [name,cells] of Object.entries(myShipPositions)){
+    if(cells.has(coord)){selectMoveShip(name);return;}
+  }
+}
+function selectMoveShip(name){
+  selectedMoveShip=name;
+  document.getElementById('moveShipLabel').textContent=name.toUpperCase();
+  renderGame();
+}
+function doAdvance(){
+  if(!selectedMoveShip){toast('Click one of your ships first');return;}
+  if(!gameState||!gameState.my_turn||gameState.over)return;
+  send({type:'move',ship:selectedMoveShip});
+  selectedMoveShip=null;
+  document.getElementById('moveShipLabel').textContent='CLICK A SHIP TO SELECT';
+}
+function fireShot(r,c){
+  if(!gameState||!gameState.my_turn||gameState.over)return;
+  if(actionMode!=='fire')return;
+  const val=gameState.enemy_board&&gameState.enemy_board[r][c];
+  if(val==='hit'||val==='miss')return;
+  send({type:'fire',r,c});
+}
+
+// Result
+function showResult(iWon){
+  const overlay=document.getElementById('resultOverlay');
+  document.getElementById('resultBox').className='overlay-box '+(iWon?'win':'lose');
+  document.getElementById('resultTitle').textContent=iWon?'VICTORY!':'DEFEAT';
+  document.getElementById('resultSub').textContent=iWon?'Enemy fleet destroyed!':'Your fleet has been sunk.';
+  overlay.classList.add('active');
+}
+function closeOverlay(){document.getElementById('resultOverlay').classList.remove('active');}
+function requestRematch(){send({type:'rematch'});closeOverlay();}
+
+// Toast
+let toastTimer=null;
+function toast(msg,duration=2500){
+  const el=document.getElementById('toast');
+  el.textContent=msg;el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>el.classList.remove('show'),duration);
+}
+
+// Fix typo in renderGame
+const my_body = true; // placeholder ref
+
+document.getElementById('joinCode').addEventListener('keydown',e=>{if(e.key==='Enter')joinRoom();});
+</script>
+</body>
+</html>
