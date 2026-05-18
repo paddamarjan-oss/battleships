@@ -517,7 +517,10 @@ async def handle(ws, msg):
 # ─── HTTP ──────────────────────────────────────────────────────────────────────
 async def http_handler(request):
     here = os.path.dirname(os.path.abspath(__file__))
-    return web.FileResponse(os.path.join(here, "index.html"))
+    resp = web.FileResponse(os.path.join(here, "index.html"))
+    resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    return resp
 
 async def main():
     port = int(os.environ.get("PORT", 8000))
